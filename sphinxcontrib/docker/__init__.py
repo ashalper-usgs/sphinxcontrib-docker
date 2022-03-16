@@ -4,7 +4,7 @@
 
     A Sphinx extension for documenting Docker files.
 
-y    :license: BSD, see LICENSE for details.
+    :license: BSD, see LICENSE for details.
 """
 
 import pbr.version
