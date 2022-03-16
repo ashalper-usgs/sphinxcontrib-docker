@@ -8,12 +8,15 @@
 """
 
 import pbr.version
+
+from sphinx.application import Sphinx
 from docutils import nodes
 from docutils.parsers.rst import Directive
-
+from typing import Dict
+    
 if False:
     # For type annotations
-    from typing import Any, Dict  # noqa
+    from typing import Any
     from sphinx.application import Sphinx  # noqa
 
 __version__ = pbr.version.VersionInfo('sphinxcontrib.docker').version_string()
@@ -26,7 +29,12 @@ class Docker(Directive):
         return [paragraph_node]
 
 
-def setup(app):
+def setup(app: Sphinx):
+    app.require_sphinx("3")
+
+    app.add_config_value("docker_sources", app.srcdir, "env", [str, dict])
+    app.add_config_value("docker_comment_markup", "", "env", [str])
+    
     app.add_directive("helloworld", Docker)
 
     return {
