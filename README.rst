@@ -10,7 +10,8 @@ A Sphinx extension for documenting Docker files.
 Overview
 --------
 
-Add a longer description here.
+The idea is to allow you to tag comment blocks in your Dockerfiles,
+and produce Sphinx documentation from them.
 
 Links
 -----
