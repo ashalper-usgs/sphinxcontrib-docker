@@ -18,11 +18,13 @@ from sphinx.builders import Builder
 from sphinx.environment import BuildEnvironment
 from sphinx.errors import SphinxError
 from sphinx.highlighting import PygmentsBridge
+from sphinx.util.logging import getLogger
 from typing import TYPE_CHECKING, Dict, Union
 
 
 __version__ = pbr.version.VersionInfo('sphinxcontrib.docker').version_string()
-
+log = getLogger(__name__)
+DOMAIN_NAME = "docker"
 
 class Docker(Directive):
 
