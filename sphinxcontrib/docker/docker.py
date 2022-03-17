@@ -592,12 +592,12 @@ class DockerStore:
                 if not entry.usages:
                     del self.data[module].definitions[signature]
 
-    def get_code(self, tf_file: Path) -> List[str]:
-        module = self.get_module(tf_file)
-        return self.data[module].get_code(tf_file)
+    def get_code(self, df_file: Path) -> List[str]:
+        module = self.get_module(df_file)
+        return self.data[module].get_code(df_file)
 
-    def get_module(self, tf_file: Path) -> DockerModule:
-        module_path = tf_file.parent
+    def get_module(self, df_file: Path) -> DockerModule:
+        module_path = df_file.parent
         for module in self.data:
             if module.path == module_path:
                 return module
@@ -607,9 +607,9 @@ class DockerStore:
     def get_definitions(
         self,
         module: Optional[DockerModule] = None,
-        tf_file: Optional[Path] = None,
+        df_file: Optional[Path] = None,
     ) -> Dict[HclSignature, HclDefinition]:
-        module = self.get_module(tf_file) if tf_file else module
+        module = self.get_module(df_file) if df_file else module
 
         def gen_definitions(
             module: Optional[DockerModule],
@@ -621,7 +621,7 @@ class DockerStore:
                     yield from self.data[module].definitions.items()
 
         def condition(entry: HclDefinition) -> bool:
-            return entry.file == tf_file if tf_file else True
+            return entry.file == df_file if df_file else True
 
         return {
             signature: definition
@@ -648,7 +648,7 @@ class DockerStore:
                 for module_data in self.data.values():
                     yield from module_data.get_documented_files()
 
-        return set(tf_file for tf_file in gen_files())
+        return set(df_file for df_file in gen_files())
 
     def get_documentation(self, definition: HclDefinition) -> List[str]:
         start_line = definition.doc_code.start_position.line
@@ -722,8 +722,8 @@ class ModuleData(NamedTuple):
             hcl_definition = self.definitions[signature]
             log.debug(f"Found definition of {repr(signature)} in cache.")
         except KeyError:
-            for tf_file in module.path.glob("*.tf"):
-                hcl_definition = self._find_definition(signature, tf_file)  # type: ignore
+            for df_file in module.path.glob("Dockerfile"):
+                hcl_definition = self._find_definition(signature, df_file)  # type: ignore
                 if not hcl_definition:
                     continue
                 log.debug(f"Caching definition of {repr(signature)}.")
@@ -736,13 +736,13 @@ class ModuleData(NamedTuple):
         return hcl_definition
 
     def get_definitions(
-        self, tf_file: Optional[Path] = None
+        self, df_file: Optional[Path] = None
     ) -> Dict[HclSignature, HclDefinition]:
         """
         Make a mapping of known HCL definitions.
 
         Args:
-            tf_file:
+            df_file:
                 Optionally filter for a specific file.
 
         Returns:
@@ -751,7 +751,7 @@ class ModuleData(NamedTuple):
         """
 
         def condition(entry: HclDefinition) -> bool:
-            return entry.file == tf_file if tf_file else True
+            return entry.file == df_file if df_file else True
 
         return {
             signature: entry
@@ -769,22 +769,22 @@ class ModuleData(NamedTuple):
         documentation = extract_docstring_from_comment(code_with_doc)
         return documentation
 
-    def get_code(self, tf_file: Path) -> List[str]:
-        if tf_file not in self.code:
-            log.debug(f"Putting code from {tf_file} in cache.")
-            self.code[tf_file] = tf_file.read_text().splitlines()
-        raw_code = self.code[tf_file]
+    def get_code(self, df_file: Path) -> List[str]:
+        if df_file not in self.code:
+            log.debug(f"Putting code from {df_file} in cache.")
+            self.code[df_file] = df_file.read_text().splitlines()
+        raw_code = self.code[df_file]
         return raw_code
 
     def get_documented_files(self) -> Set[Path]:
         return set(entry.file for entry in self.definitions.values())
 
     def _find_definition(
-        self, signature: HclSignature, tf_file: Path
+        self, signature: HclSignature, df_file: Path
     ) -> Optional[HclDefinition]:
         log.debug(f"Looking for definition of {repr(signature)} in files.")
-        raw_code = self.get_code(tf_file)
-        log.debug(f"Looking for definition of {repr(signature)} in {tf_file}.")
+        raw_code = self.get_code(df_file)
+        log.debug(f"Looking for definition of {repr(signature)} in {df_file}.")
         found_code = self._find_definition_code(signature, raw_code)
         if not found_code:
             return None
@@ -793,7 +793,7 @@ class ModuleData(NamedTuple):
         log.debug(f"Found definition of {repr(signature)} in code.")
         hcl_definition = HclDefinition(
             signature,
-            tf_file,
+            df_file,
             doc_code,
             signature_code,
             body_code,
