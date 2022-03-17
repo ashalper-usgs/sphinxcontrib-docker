@@ -11,7 +11,6 @@ import sys
 import pbr.version
 
 from docutils import nodes
-from docutils.parsers.rst import Directive
 from pathlib import Path
 from sphinx.application import Sphinx
 from sphinx.builders import Builder
@@ -26,11 +25,6 @@ __version__ = pbr.version.VersionInfo('sphinxcontrib.docker').version_string()
 log = getLogger(__name__)
 DOMAIN_NAME = "docker"
 
-class Docker(Directive):
-
-    def run(self):
-        paragraph_node = nodes.paragraph(text='Hello World!')
-        return [paragraph_node]
 
 class SphinxDockerError(SphinxError):
     category = "Sphinx-Docker error"
@@ -45,8 +39,6 @@ def setup(app: Sphinx):
 
     app.add_domain(DockerDomain)
             
-    app.add_directive("helloworld", Docker)
-
     return {
         'version': __version__,
         'parallel_read_safe': True,
