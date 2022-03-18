@@ -50,7 +50,7 @@ from sphinxcontrib.docker.docker import (
     HclDefinition,
     HclSignature,
     DockerBlockType,
-    DockerDataSignature,
+    DockerFromSignature,
     DockerModule,
     DockerModuleSignature,
     DockerOutputSignature,
@@ -166,10 +166,10 @@ class DockerObjectDirective(ObjectDescription[str]):
         provider, kind = provider_kind.split("_", maxsplit=1)
         return DockerResourceSignature(provider, kind, name)  # type: ignore # Method assignation to NamedTuple messes with Mypy
 
-    def _parse_data_signature(self, signature: str) -> HclSignature:
+    def _parse_from_signature(self, signature: str) -> HclSignature:
         provider_kind, name = signature.split(".", maxsplit=1)
         provider, kind = provider_kind.split("_", maxsplit=1)
-        return DockerDataSignature(provider, kind, name)  # type: ignore # Method assignation to NamedTuple messes with Mypy
+        return DockerFromSignature(provider, kind, name)  # type: ignore # Method assignation to NamedTuple messes with Mypy
 
     def _parse_module_signature(self, signature: str) -> HclSignature:
         return DockerModuleSignature(signature)  # type: ignore # Method assignation to NamedTuple messes with Mypy
@@ -278,15 +278,18 @@ class DockerObjectDirective(ObjectDescription[str]):
         self.indexnode.append(inode)
 
     def transform_content(self, contentnode: addnodes.desc_content) -> None:
-        hcl_def = self._hcl_def
+        # TODO: remove
+        print(f"addnodes.desc_content '{addnodes.desc_content}'")
+        if False:
+            hcl_def = self._hcl_def
 
-        code = self._domain.store.get_documentation(hcl_def)
+            code = self._domain.store.get_documentation(hcl_def)
 
-        for line in code:
-            log.debug(line)
+            for line in code:
+                log.debug(line)
 
-        comment_nodes = self._parse_docker_comment(hcl_def)
-        contentnode.extend(comment_nodes)
+                comment_nodes = self._parse_docker_comment(hcl_def)
+                contentnode.extend(comment_nodes)
 
     def _local_code_url(self, hcl_def: HclDefinition) -> str:
         return f"{hcl_def.file}#L{hcl_def.doc_code.start_position.line}-L{hcl_def.doc_code.end_position.line}"
@@ -545,7 +548,7 @@ class DomainData(TypedDict, total=False):
 
 class DockerDomain(Domain):
 
-    name: str = "tf"
+    name: str = "docker"
     """
     The domain name, short and unique.
     """
@@ -556,21 +559,21 @@ class DockerDomain(Domain):
         "variable": ObjType(t_("variable"), "variable"),
         "output": ObjType(t_("output"), "output"),
         "module": ObjType(t_("module"), "module"),
-        "data": ObjType(t_("data"), "data"),
+        "from": ObjType(t_("from"), "from"),
     }
     directives = {
         "resource": DockerObjectDirective,
         "variable": DockerObjectDirective,
         "output": DockerObjectDirective,
         "module": DockerObjectDirective,
-        "data": DockerObjectDirective,
+        "from": DockerObjectDirective,
     }
     roles = {
         "resource": DockerCrossReferenceRole(),
         "variable": DockerCrossReferenceRole(),
         "output": DockerCrossReferenceRole(),
         "module": DockerCrossReferenceRole(),
-        "data": DockerCrossReferenceRole(),
+        "from": DockerCrossReferenceRole(),
     }
     indices: List[Type[Index]] = [DockerDefinitionsIndex]
     initial_data: DomainData = {  # type: ignore # base class defined the type as "Dict[Any, Any]"

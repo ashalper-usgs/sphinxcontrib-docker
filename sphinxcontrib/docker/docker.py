@@ -214,7 +214,7 @@ class HclSignature(Protocol):
     @property
     def type(self) -> DockerBlockType:
         """
-        The Docker object type (``resource``, ``data``, etc).
+        The Docker object type (``resource``, ``from``, etc).
         """
         ...
 
@@ -378,7 +378,7 @@ def make_identifier(
 
 
 class DockerBlockType(Enum):
-    DATA = "data"
+    FROM = "from"
     VARIABLE = "variable"
     MODULE = "module"
     OUTPUT = "output"
@@ -457,14 +457,14 @@ class DockerResourceSignature(NamedTuple):
     __str__ = _str  # type: ignore # Assigning methods is unsupported by mypy
 
 
-class DockerDataSignature(NamedTuple):
+class DockerFromSignature(NamedTuple):
     provider: str
     kind: str
     name: str
 
     @property
     def type(self) -> DockerBlockType:
-        return DockerBlockType.DATA
+        return DockerBlockType.FROM
 
     @property
     def labels(self) -> List[str]:
