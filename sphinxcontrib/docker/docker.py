@@ -154,61 +154,14 @@ class DockerModule(NamedTuple):
         return self.fullname
 
 
-class HclSignature(Protocol):
+class InstrSignature(Protocol):
+    # TODO: description of Dockerfile instruction grammar in docstring
+    # below?
     """
-    Signature of a Hashicorp Configuration Language (HCL) body element.
+    Signature of a Dockerfile instruction.
 
-    This does not consider anything regarding a block's definition body,
-    only its signature.  All signature **must** be defined on a single
-    line of HCL code, as per the grammar.
-
-    In the context of Docker, which is a software that uses HCL by default
-    for its configuration, HCL signatures are **unique in a given module**.
-    Even sub module can have some signature equivalent to one of its parents
-    ones without conflicts.
-
-    Body elements can be one of the following.
-
-    **Blocks**
-        Blocks are multi line definitions.  Their pseudo-grammar is
-
-        .. code-block:: bnf
-
-            Block = Identifier (StringLit|Identifier)* "{" Newline Body "}" Newline;
-
-        A block's *signature* is anything **before** the opening scope
-        (``{``)
-
-    **One line blocks**
-        One line blocks are the same as blocks but on a single line,
-        and thus can only have a simple definition body.  Their grammar is
-
-        .. code-block:: bnf
-
-            OneLineBlock = Identifier (StringLit|Identifier)* "{" (Identifier "=" Expression)? "}" Newline;
-
-        A one line block's *signature* is anything **before** the opening
-        scope (``{``), just like multi-line blocks.
-
-    **Attributes**
-        Attributes are simple key-value pairs.  Their grammar is
-
-        .. code-block:: bnf
-
-            Attribute = Identifier "=" Expression Newline;
-
-        In this case, the signature would only include the left operand of
-        the assignation, labeled ``Identifier`` above.
-
-    In Docker, the first **Identifier** of **blocks** and
-    **one line blocks** is the signature's :attr:`~type` and zero (0) or
-    more **labels** (:attr:`~labels`) based on the remaining **Identifiers**.
-    **Attributes** have an implicit type and one (1) label.
-
-    See also:
-        `The HCL syntax`_
-
-    .. _The HCL syntax: https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md
+    This does not consider anything regarding an instruction's body,
+    only its signature.
     """
 
     @property
@@ -251,7 +204,7 @@ class HclSignature(Protocol):
         ...
 
 
-def regex(self: HclSignature) -> Union[str, re.Pattern[str]]:
+def regex(self: InstrSignature) -> Union[str, re.Pattern[str]]:
     """
     Return a regex that matches the signature reliably within a module.
 
@@ -307,7 +260,7 @@ def regex(self: HclSignature) -> Union[str, re.Pattern[str]]:
     return signature_regex
 
 
-def _repr(self: HclSignature) -> str:
+def _repr(self: InstrSignature) -> str:
     """
     Make a valid Python code string that create an equivalent instance.
     """
@@ -320,12 +273,12 @@ def _repr(self: HclSignature) -> str:
     )
 
 
-def _str(self: HclSignature) -> str:
+def _str(self: InstrSignature) -> str:
     return f"{'.'.join(self.labels)}"
 
 
 def make_identifier(
-    signature: HclSignature, module: Optional[DockerModule] = None
+    signature: InstrSignature, module: Optional[DockerModule] = None
 ) -> str:
     """
     Create an URL friendly identifier string from a signature.
@@ -379,7 +332,7 @@ def make_identifier(
 
 class DockerBlockType(Enum):
     FROM = "from"
-    VARIABLE = "variable"
+    LABEL = "label"
     MODULE = "module"
     OUTPUT = "output"
     PROVIDER = "provider"
@@ -387,7 +340,7 @@ class DockerBlockType(Enum):
     RESOURCE = "resource"
 
 
-class HclDefinition(NamedTuple):
+class InstrDefinition(NamedTuple):
     """
     Define a HCL object.
 
@@ -395,7 +348,7 @@ class HclDefinition(NamedTuple):
     scattered across different modules (folders).
     """
 
-    signature: HclSignature
+    signature: InstrSignature
     """
     Identify a definition, the signature is the definition *header*.
     """
@@ -495,16 +448,18 @@ class DockerModuleSignature(NamedTuple):
     __str__ = _str  # type: ignore # Assigning methods is unsupported by mypy
 
 
-class DockerVariableSignature(NamedTuple):
+class DockerLabelSignature(NamedTuple):
+    provider: str
+    kind: str
     name: str
 
     @property
     def type(self) -> DockerBlockType:
-        return DockerBlockType.VARIABLE
+        return DockerBlockType.LABEL
 
     @property
     def labels(self) -> List[str]:
-        return [self.name]
+        return [f"{self.provider}_{self.kind}", self.name]
 
     regex = regex  # type: ignore # Assigning methods is unsupported by mypy
 
@@ -551,9 +506,9 @@ class DockerStore:
     def register(
         self,
         module: DockerModule,
-        signature: HclSignature,
+        signature: InstrSignature,
         docname: str,
-    ) -> HclDefinition:
+    ) -> InstrDefinition:
         """
         Register a definition signature for a given module.
 
@@ -608,19 +563,19 @@ class DockerStore:
         self,
         module: Optional[DockerModule] = None,
         df_file: Optional[Path] = None,
-    ) -> Dict[HclSignature, HclDefinition]:
+    ) -> Dict[InstrSignature, InstrDefinition]:
         module = self.get_module(df_file) if df_file else module
 
         def gen_definitions(
             module: Optional[DockerModule],
-        ) -> Iterator[Tuple[HclSignature, HclDefinition]]:
+        ) -> Iterator[Tuple[InstrSignature, InstrDefinition]]:
             if module:
                 yield from self.data[module].definitions.items()
             else:
                 for module in self.data:
                     yield from self.data[module].definitions.items()
 
-        def condition(entry: HclDefinition) -> bool:
+        def condition(entry: InstrDefinition) -> bool:
             return entry.file == df_file if df_file else True
 
         return {
@@ -650,7 +605,7 @@ class DockerStore:
 
         return set(df_file for df_file in gen_files())
 
-    def get_documentation(self, definition: HclDefinition) -> List[str]:
+    def get_documentation(self, definition: InstrDefinition) -> List[str]:
         start_line = definition.doc_code.start_position.line
         end_line = definition.doc_code.end_position.line
 
@@ -688,7 +643,7 @@ class ModuleData(NamedTuple):
     Cache of raw HCL code indexed by file path.
     """
 
-    definitions: Dict[HclSignature, HclDefinition]
+    definitions: Dict[InstrSignature, InstrDefinition]
     """
     Found block definitions indexed by their signature.
     """
@@ -698,8 +653,8 @@ class ModuleData(NamedTuple):
         return cls(defaultdict(list), dict())
 
     def find_definition(
-        self, module: DockerModule, signature: HclSignature
-    ) -> HclDefinition:
+        self, module: DockerModule, signature: InstrSignature
+    ) -> InstrDefinition:
         """
         Look for a Docker definition in all HCL files of a module.
 
@@ -737,7 +692,7 @@ class ModuleData(NamedTuple):
 
     def get_definitions(
         self, df_file: Optional[Path] = None
-    ) -> Dict[HclSignature, HclDefinition]:
+    ) -> Dict[InstrSignature, InstrDefinition]:
         """
         Make a mapping of known HCL definitions.
 
@@ -750,7 +705,7 @@ class ModuleData(NamedTuple):
             items from it won't remove them from this store.
         """
 
-        def condition(entry: HclDefinition) -> bool:
+        def condition(entry: InstrDefinition) -> bool:
             return entry.file == df_file if df_file else True
 
         return {
@@ -759,7 +714,7 @@ class ModuleData(NamedTuple):
             if condition(entry)
         }
 
-    def get_documentation(self, signature: HclSignature) -> List[str]:
+    def get_documentation(self, signature: InstrSignature) -> List[str]:
         definition = self.definitions[signature]
 
         start_line = definition.doc_code.start_position.line
@@ -780,8 +735,8 @@ class ModuleData(NamedTuple):
         return set(entry.file for entry in self.definitions.values())
 
     def _find_definition(
-        self, signature: HclSignature, df_file: Path
-    ) -> Optional[HclDefinition]:
+        self, signature: InstrSignature, df_file: Path
+    ) -> Optional[InstrDefinition]:
         log.debug(f"Looking for definition of {repr(signature)} in files.")
         raw_code = self.get_code(df_file)
         log.debug(f"Looking for definition of {repr(signature)} in {df_file}.")
@@ -791,7 +746,7 @@ class ModuleData(NamedTuple):
 
         doc_code, signature_code, body_code = found_code
         log.debug(f"Found definition of {repr(signature)} in code.")
-        hcl_definition = HclDefinition(
+        hcl_definition = InstrDefinition(
             signature,
             df_file,
             doc_code,
@@ -802,7 +757,7 @@ class ModuleData(NamedTuple):
         return hcl_definition
 
     def _find_definition_code(
-        self, signature: HclSignature, lines: List[str]
+        self, signature: InstrSignature, lines: List[str]
     ) -> Optional[Tuple[CodeSpan, CodeSpan, CodeSpan]]:
         signature_code = self._lookup_signature(signature, lines)
 
@@ -843,7 +798,7 @@ class ModuleData(NamedTuple):
         return doc_code, signature_code, body_code
 
     def _lookup_signature(
-        self, signature: HclSignature, lines: List[str]
+        self, signature: InstrSignature, lines: List[str]
     ) -> Optional[CodeSpan]:
         signature_regex = signature.regex()
         for i, line_of_code in enumerate(lines):

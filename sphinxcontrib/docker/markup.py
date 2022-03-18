@@ -47,8 +47,8 @@ from sphinxcontrib.docker.sphinxapi import (
     SphinxGeneralIndexEntry,
 )
 from sphinxcontrib.docker.docker import (
-    HclDefinition,
-    HclSignature,
+    InstrDefinition,
+    InstrSignature,
     DockerBlockType,
     DockerFromSignature,
     DockerModule,
@@ -56,7 +56,7 @@ from sphinxcontrib.docker.docker import (
     DockerOutputSignature,
     DockerResourceSignature,
     DockerStore,
-    DockerVariableSignature,
+    DockerLabelSignature,
     make_identifier,
 )
 
@@ -115,13 +115,13 @@ class DockerObjectDirective(ObjectDescription[str]):
         return DockerModule.from_module_parts(self.env, root_module, module)
 
     @property
-    def hcl_sig(self) -> Optional[HclSignature]:
+    def hcl_sig(self) -> Optional[InstrSignature]:
         if hasattr(self, "_hcl_sig"):
             return getattr(self, "_hcl_sig")  # type: ignore
         return None
 
     @property
-    def hcl_def(self) -> Optional[HclDefinition]:
+    def hcl_def(self) -> Optional[InstrDefinition]:
         if hasattr(self, "_hcl_def"):
             return getattr(self, "_hcl_def")  # type: ignore
         return None
@@ -136,7 +136,7 @@ class DockerObjectDirective(ObjectDescription[str]):
 
         return DockerBlockType(block_type_name)
 
-    def parse_signature(self, signature: str) -> HclSignature:
+    def parse_signature(self, signature: str) -> InstrSignature:
         log.debug(f"Parsing signature '{signature}'.")
         block_type = self.docker_block_type
         log.debug(f"Looking for signature parser for '{block_type.value}'.")
@@ -154,33 +154,24 @@ class DockerObjectDirective(ObjectDescription[str]):
 
     def _get_directive_signature_parser(
         self, block_type: DockerBlockType
-    ) -> Callable[[str], HclSignature]:
+    ) -> Callable[[str], InstrSignature]:
         parser = cast(
-            Callable[[str], HclSignature],
+            Callable[[str], InstrSignature],
             getattr(self, f"_parse_{block_type.value}_signature"),
         )
         return parser
 
-    def _parse_resource_signature(self, signature: str) -> HclSignature:
-        provider_kind, name = signature.split(".", maxsplit=1)
-        provider, kind = provider_kind.split("_", maxsplit=1)
-        return DockerResourceSignature(provider, kind, name)  # type: ignore # Method assignation to NamedTuple messes with Mypy
-
-    def _parse_from_signature(self, signature: str) -> HclSignature:
+    def _parse_from_signature(self, signature: str) -> InstrSignature:
         provider_kind, name = signature.split(".", maxsplit=1)
         provider, kind = provider_kind.split("_", maxsplit=1)
         return DockerFromSignature(provider, kind, name)  # type: ignore # Method assignation to NamedTuple messes with Mypy
 
-    def _parse_module_signature(self, signature: str) -> HclSignature:
-        return DockerModuleSignature(signature)  # type: ignore # Method assignation to NamedTuple messes with Mypy
+    def _parse_label_signature(self, signature: str) -> InstrSignature:
+        provider_kind, name = signature.split(".", maxsplit=1)
+        provider, kind = provider_kind.split("_", maxsplit=1)
+        return DockerFromSignature(provider, kind, name)
 
-    def _parse_output_signature(self, signature: str) -> HclSignature:
-        return DockerOutputSignature(signature)  # type: ignore  # Method assignation to NamedTuple messes with Mypy
-
-    def _parse_variable_signature(self, signature: str) -> HclSignature:
-        return DockerVariableSignature(signature)  # type: ignore # Method assignation to NamedTuple messes with Mypy
-
-    def make_signature_nodes(self, parsed_sig: HclSignature) -> List[Node]:
+    def make_signature_nodes(self, parsed_sig: InstrSignature) -> List[Node]:
         """
         Make nice but semantic nodes for the HCL block signature.
 
@@ -291,11 +282,11 @@ class DockerObjectDirective(ObjectDescription[str]):
                 comment_nodes = self._parse_docker_comment(hcl_def)
                 contentnode.extend(comment_nodes)
 
-    def _local_code_url(self, hcl_def: HclDefinition) -> str:
+    def _local_code_url(self, hcl_def: InstrDefinition) -> str:
         return f"{hcl_def.file}#L{hcl_def.doc_code.start_position.line}-L{hcl_def.doc_code.end_position.line}"
 
     def _parse_comment_with_external_parser(
-        self, hcl_def: HclDefinition, markup_id: str
+        self, hcl_def: InstrDefinition, markup_id: str
     ) -> List[Node]:
         parser_class = parser_for_markup(markup_id)
         parser = parser_class()
@@ -310,7 +301,7 @@ class DockerObjectDirective(ObjectDescription[str]):
         return document.children
 
     def _parse_comment_with_current_parser(
-        self, hcl_def: HclDefinition
+        self, hcl_def: InstrDefinition
     ) -> List[Node]:
         document = utils.new_document(
             self._local_code_url(hcl_def), self.state.document.settings
@@ -330,18 +321,18 @@ class DockerObjectDirective(ObjectDescription[str]):
         return document.children
 
     def _parse_comment_markdown_comment(
-        self, hcl_def: HclDefinition
+        self, hcl_def: InstrDefinition
     ) -> List[Node]:
         return self._parse_comment_with_external_parser(hcl_def, "markdown")
 
     def _parse_comment_restructuredtext_comment(
-        self, hcl_def: HclDefinition
+        self, hcl_def: InstrDefinition
     ) -> List[Node]:
         return self._parse_comment_with_external_parser(
             hcl_def, "restructuredtext"
         )
 
-    def _parse_docker_comment(self, hcl_def: HclDefinition) -> List[Node]:
+    def _parse_docker_comment(self, hcl_def: InstrDefinition) -> List[Node]:
         markup_id = self.options.get(
             "markup", get_config_docker_comment_markup(self.env)
         )
@@ -536,8 +527,8 @@ class SphinxData(NamedTuple):
     identifier: str
     sphinx_obj: SphinxDomainObjectDescription
     module: DockerModule
-    signature: HclSignature
-    definition: HclDefinition
+    signature: InstrSignature
+    definition: InstrDefinition
 
 
 class DomainData(TypedDict, total=False):
@@ -556,21 +547,21 @@ class DockerDomain(Domain):
     label: str = "Docker"
     object_types = {
         "resource": ObjType(t_("resource"), "resource"),
-        "variable": ObjType(t_("variable"), "variable"),
+        "label": ObjType(t_("label"), "label"),
         "output": ObjType(t_("output"), "output"),
         "module": ObjType(t_("module"), "module"),
         "from": ObjType(t_("from"), "from"),
     }
     directives = {
         "resource": DockerObjectDirective,
-        "variable": DockerObjectDirective,
+        "label": DockerObjectDirective,
         "output": DockerObjectDirective,
         "module": DockerObjectDirective,
         "from": DockerObjectDirective,
     }
     roles = {
         "resource": DockerCrossReferenceRole(),
-        "variable": DockerCrossReferenceRole(),
+        "label": DockerCrossReferenceRole(),
         "output": DockerCrossReferenceRole(),
         "module": DockerCrossReferenceRole(),
         "from": DockerCrossReferenceRole(),
@@ -600,8 +591,8 @@ class DockerDomain(Domain):
     def register(
         self,
         module: DockerModule,
-        signature: HclSignature,
-    ) -> HclDefinition:
+        signature: InstrSignature,
+    ) -> InstrDefinition:
         definition = self.store.register(module, signature, self.env.docname)
         identifier = make_identifier(signature, module)
 
