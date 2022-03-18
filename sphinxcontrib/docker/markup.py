@@ -51,8 +51,8 @@ from sphinxcontrib.docker.docker import (
     InstrSignature,
     DockerBlockType,
     DockerFromSignature,
-    DockerModule,
-    DockerModuleSignature,
+    Dockerfile,
+    DockerfileSignature,
     DockerOutputSignature,
     DockerResourceSignature,
     DockerStore,
@@ -89,12 +89,12 @@ def parser_for_markup(markup_language_id: str) -> Type[sphinx.parsers.Parser]:
             ) from e
     return sphinx.parsers.RSTParser
 
-
+# TODO: is there an analog to "rootmodule"?
 class DockerObjectDirective(ObjectDescription[str]):
     option_spec: OptionSpec = {
         "noindex": directives.flag,
         "rootmodule": directives.unchanged,
-        "module": directives.unchanged,
+        "dockerfile": directives.unchanged,
         "markup": directives.unchanged,
     }
 
@@ -105,14 +105,14 @@ class DockerObjectDirective(ObjectDescription[str]):
         return DockerDomain.get_instance(self.env)
 
     @property
-    def module(self) -> DockerModule:
+    def dockerfile(self) -> Dockerfile:
         if hasattr(self, "_hcl_mod"):
             return getattr(self, "_hcl_mod")  # type: ignore
 
         root_module = self.options.get("rootmodule", None)
-        module = self.options.get("module", "")
+        dockerfile = self.options.get("dockerfile", "")
 
-        return DockerModule.from_module_parts(self.env, root_module, module)
+        return Dockerfile.from_dockerfile_parts(self.env, root_module, dockerfile)
 
     @property
     def hcl_sig(self) -> Optional[InstrSignature]:
@@ -143,9 +143,9 @@ class DockerObjectDirective(ObjectDescription[str]):
 
         stripped = signature.strip()
         if "/" in stripped:
-            module_path, stripped = stripped.rsplit("/", maxsplit=1)
-            self._hcl_mod = DockerModule.from_module_path(
-                self.env, module_path
+            dockerfile_path, stripped = stripped.rsplit("/", maxsplit=1)
+            self._hcl_mod = Dockerfile.from_dockerfile_path(
+                self.env, dockerfile_path
             )
 
         parser = self._get_directive_signature_parser(block_type)
@@ -221,18 +221,18 @@ class DockerObjectDirective(ObjectDescription[str]):
 
     def handle_signature(self, sig: str, signode: desc_signature) -> str:
         hcl_sig = self.parse_signature(sig)
-        hcl_def = self._domain.register(self.module, hcl_sig)
+        hcl_def = self._domain.register(self.dockerfile, hcl_sig)
         self._hcl_sig = hcl_sig
         self._hcl_def = hcl_def
 
-        signode["module"] = self.module
+        signode["dockerfile"] = self.dockerfile
         signode["signature"] = hcl_sig
         signode["definition"] = hcl_def
 
         signature_nodes = self.make_signature_nodes(hcl_sig)
         signode.extend(signature_nodes)
 
-        return make_identifier(hcl_sig, self.module)
+        return make_identifier(hcl_sig, self.dockerfile)
 
     def add_target_and_index(
         self, name: T, sig: str, signode: desc_signature
@@ -526,7 +526,7 @@ D = TypeVar("D", bound="DockerDomain")
 class SphinxData(NamedTuple):
     identifier: str
     sphinx_obj: SphinxDomainObjectDescription
-    module: DockerModule
+    dockerfile: Dockerfile
     signature: InstrSignature
     definition: InstrDefinition
 
@@ -549,21 +549,21 @@ class DockerDomain(Domain):
         "resource": ObjType(t_("resource"), "resource"),
         "label": ObjType(t_("label"), "label"),
         "output": ObjType(t_("output"), "output"),
-        "module": ObjType(t_("module"), "module"),
+        "dockerfile": ObjType(t_("dockerfile"), "dockerfile"),
         "from": ObjType(t_("from"), "from"),
     }
     directives = {
         "resource": DockerObjectDirective,
         "label": DockerObjectDirective,
         "output": DockerObjectDirective,
-        "module": DockerObjectDirective,
+        "dockerfile": DockerObjectDirective,
         "from": DockerObjectDirective,
     }
     roles = {
         "resource": DockerCrossReferenceRole(),
         "label": DockerCrossReferenceRole(),
         "output": DockerCrossReferenceRole(),
-        "module": DockerCrossReferenceRole(),
+        "dockerfile": DockerCrossReferenceRole(),
         "from": DockerCrossReferenceRole(),
     }
     indices: List[Type[Index]] = [DockerDefinitionsIndex]
@@ -590,11 +590,11 @@ class DockerDomain(Domain):
 
     def register(
         self,
-        module: DockerModule,
+        dockerfile: Dockerfile,
         signature: InstrSignature,
     ) -> InstrDefinition:
-        definition = self.store.register(module, signature, self.env.docname)
-        identifier = make_identifier(signature, module)
+        definition = self.store.register(dockerfile, signature, self.env.docname)
+        identifier = make_identifier(signature, dockerfile)
 
         sphinx_obj = SphinxDomainObjectDescription(
             name=str(signature),
@@ -606,7 +606,7 @@ class DockerDomain(Domain):
         )
 
         self.sphinx_references[identifier] = SphinxData(
-            identifier, sphinx_obj, module, signature, definition
+            identifier, sphinx_obj, dockerfile, signature, definition
         )
 
         return definition
@@ -759,20 +759,20 @@ class DockerDomain(Domain):
             return lambda x: False
 
         def matcher(sphinx_reference: SphinxData) -> bool:
-            matched_module = match.group("module")  # type: ignore # matched checked above
+            matched_dockerfile = match.group("dockerfile")  # type: ignore # matched checked above
             matched_name = match.group("name")  # type: ignore # matched checked above
 
             typename_ok = (
                 not typename or typename == sphinx_reference.sphinx_obj.type
             )
-            module_ok = (
-                not matched_module
-                or matched_module.strip("/") == sphinx_reference.module.fullname
+            dockerfile_ok = (
+                not matched_dockerfile
+                or matched_dockerfile.strip("/") == sphinx_reference.dockerfile.fullname
             )
             name_ok = not matched_name or matched_name in str(
                 sphinx_reference.signature
             )
 
-            return all([typename_ok, module_ok, name_ok])
+            return all([typename_ok, dockerfile_ok, name_ok])
 
         return matcher

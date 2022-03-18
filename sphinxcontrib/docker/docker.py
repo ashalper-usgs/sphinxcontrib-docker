@@ -34,48 +34,12 @@ else:
 
 log = getLogger(__name__)
 
-_DockerModule = TypeVar("_DockerModule", bound="DockerModule")
+_Dockerfile = TypeVar("_Dockerfile", bound="Dockerfile")
 
 
-class DockerModule(NamedTuple):
+class Dockerfile(NamedTuple):
     """
-    Represent a Docker module.
-
-    A Docker module is a directory containing Docker definition files.
-    and other modules.
-
-    This implementation extends the meaning of Docker modules for our
-    documentation purposes by giving the each module a :attr:`~name` and
-    a :attr:`~fullname`.
-
-    The top-most module is called the **root** module.
-
-    The root module name comes from the documentation configuration. See
-    :confval:`docker_sources`.  Its *fullname* is the same as its
-    name.
-
-    Sub modules are named by their directory name and their *fullname* is
-    derived from their parents names using slashes (``/``) as separators.
-
-    Example:
-        .. code-block:: text
-
-            └── root_module/
-                ├── main.tf
-                ├── first_sub_module/
-                │   ├── main.tf
-                │   └── sub_sub_module/
-                └── second_sub_module/
-                    └── main.tf
-
-        defines the following module fullnames:
-
-        *   ``root_module``
-        *   ``root_module/first_sub_module``
-        *   ``root_module/first_sub_module/sub_sub_module``
-        *   ``root_module/second_sub_module``
-
-    .. tip:: In Docker, **files** have no structural meaning.
+    Represent a Dockerfile.
     """
 
     root_name: str
@@ -85,30 +49,30 @@ class DockerModule(NamedTuple):
     fullname: str
 
     @classmethod
-    def from_module_path(
-        cls: Type[_DockerModule],
+    def from_dockerfile_path(
+        cls: Type[_Dockerfile],
         env: BuildEnvironment,
-        module_path: Union[str, Path] = "",
-    ) -> _DockerModule:
-        if not module_path:
-            return cls.from_module_parts(env)
+        dockerfile_path: Union[str, Path] = "",
+    ) -> _Dockerfile:
+        if not dockerfile_path:
+            return cls.from_dockerfile_parts(env)
         else:
-            root, *rest = Path(module_path).parts
-            return cls.from_module_parts(env, root, "/".join(rest))
+            root, *rest = Path(dockerfile_path).parts
+            return cls.from_dockerfile_parts(env, root, "/".join(rest))
 
     @classmethod
-    def from_module_parts(
-        cls: Type[_DockerModule],
+    def from_dockerfile_parts(
+        cls: Type[_Dockerfile],
         env: BuildEnvironment,
-        root_module_name: Optional[str] = None,
-        submodule: Union[str, Path] = "",
-    ) -> _DockerModule:
-        root = cls._find_root(env, root_module_name)
+        root_dockerfile_name: Optional[str] = None,
+        subdockerfile: Union[str, Path] = "",
+    ) -> _Dockerfile:
+        root = cls._find_root(env, root_dockerfile_name)
 
-        if not submodule:
+        if not subdockerfile:
             return root
 
-        path = Path(submodule)
+        path = Path(subdockerfile)
         if not path.is_absolute():
             path = root.path.joinpath(path)
 
@@ -119,20 +83,20 @@ class DockerModule(NamedTuple):
 
     @classmethod
     def _find_root(
-        cls: Type[_DockerModule],
+        cls: Type[_Dockerfile],
         env: BuildEnvironment,
-        root_module_name: Optional[str] = None,
-    ) -> _DockerModule:
+        root_dockerfile_name: Optional[str] = None,
+    ) -> _Dockerfile:
         sources = get_config_docker_sources(env)
         if len(sources) == 1:
             root_name, root_path = next(iter(sources.items()))
-        elif root_module_name is None:
+        elif root_dockerfile_name is None:
             raise SphinxDockerError(
                 t__("Can't determine the proper docker source to use.")
             )
         else:
             try:
-                root_name = root_module_name
+                root_name = root_dockerfile_name
                 root_path = sources[root_name]
             except KeyError as e:
                 raise SphinxDockerError(
@@ -140,7 +104,7 @@ class DockerModule(NamedTuple):
                         "Unknown Docker source '%s'. "
                         "Please review 'docker_sources' in conf.py."
                     )
-                    % root_module_name
+                    % root_dockerfile_name
                 ) from e
         return cls(
             root_name,
@@ -204,30 +168,29 @@ class InstrSignature(Protocol):
         ...
 
 
+# TODO: will need to be modified
 def regex(self: InstrSignature) -> Union[str, re.Pattern[str]]:
     """
     Return a regex that matches the signature reliably within a module.
 
-    The regex will match a line of HCL code
+    The regex will match a Dockerfile instruction:
 
     *   starting with 0 or more whitespaces,
     *   followed by an identifier without quotes
-        (:attr:`sphinxcontrib.docker.docker.HclSignature.type`),
+        (:attr:`sphinxcontrib.docker.docker.InstrSignature.type`),
     *   followed by 1 or more non-newline whitespaces,
     *   followed by the signature's labels
-        (:attr:`sphinxcontrib.docker.docker.HclSignature.labels`),
+        (:attr:`sphinxcontrib.docker.docker.InstrSignature.labels`),
         possibily between double quotes `"` and
         separated by 1 or more non-newline whitespaces,
     *   followed by 1 or more non-newline whitespaces,
     *   followed by the `{` character and
     *   ending with the newline character.
 
-    In Docker, signatures are unique in a given module, hence this
-    implementation is only reliable when scoped within a module.
-
     Args:
         self:
-            The HCL block signature object we want to find in HCL code.
+            The instruction block signature object we want to find in
+            Dockerfile.
 
     Returns:
         Compiled regular expression.
@@ -278,7 +241,7 @@ def _str(self: InstrSignature) -> str:
 
 
 def make_identifier(
-    signature: InstrSignature, module: Optional[DockerModule] = None
+    signature: InstrSignature, dockerfile: Optional[Dockerfile] = None
 ) -> str:
     """
     Create an URL friendly identifier string from a signature.
@@ -315,7 +278,8 @@ def make_identifier(
 
     Args:
         signature:
-            The HCL block signature for the definition we create an identifier.
+            The instruction block signature for the definition we
+            create an identifier.
         module:
             An optional module name.
 
@@ -324,8 +288,8 @@ def make_identifier(
     """
     base_identifier = f"{signature.type.value}-{'.'.join(signature.labels)}"
 
-    if module:
-        return f"{module.name}/{base_identifier}"
+    if dockerfile:
+        return f"{dockerfile.name}/{base_identifier}"
     else:
         return base_identifier
 
@@ -333,19 +297,14 @@ def make_identifier(
 class DockerBlockType(Enum):
     FROM = "from"
     LABEL = "label"
-    MODULE = "module"
-    OUTPUT = "output"
-    PROVIDER = "provider"
-    REQUIREMENT = "requirement"
-    RESOURCE = "resource"
 
 
 class InstrDefinition(NamedTuple):
     """
-    Define a HCL object.
+    Define Dockerfile instruction object.
 
-    We use this because many definitions could have identical signature
-    scattered across different modules (folders).
+    We use this because many definitions could have identical
+    signatures.
     """
 
     signature: InstrSignature
@@ -355,22 +314,22 @@ class InstrDefinition(NamedTuple):
 
     file: Path
     """
-    HCL file where this definition is found.
+    Dockerfile where this definition is found.
     """
 
     doc_code: CodeSpan
     """
-    HCL code section where this is documented.
+    Dockerfile code section where this is documented.
     """
 
     signature_code: CodeSpan
     """
-    HCL code section where this is defined.
+    Dockerfile code section where this is defined.
     """
 
     body_code: CodeSpan
     """
-    HCL code section where this is defined.
+    Dockerfile code section where this is defined.
     """
 
     usages: Set[str]
@@ -430,12 +389,12 @@ class DockerFromSignature(NamedTuple):
     __str__ = _str  # type: ignore # Assigning methods is unsupported by mypy
 
 
-class DockerModuleSignature(NamedTuple):
+class DockerfileSignature(NamedTuple):
     name: str
 
     @property
     def type(self) -> DockerBlockType:
-        return DockerBlockType.MODULE
+        return DockerBlockType.DOCKERFILE
 
     @property
     def labels(self) -> List[str]:
@@ -497,15 +456,15 @@ class DockerStore:
         Args:
             data: Existing data, probably read from cache.
         """
-        self.data: Dict[DockerModule, ModuleData] = data
+        self.data: Dict[Dockerfile, DockerfileData] = data
 
     @classmethod
     def initial_data(cls: Type[_DockerStore]) -> Dict[Any, Any]:
-        return defaultdict(ModuleData.new)
+        return defaultdict(DockerfileData.new)
 
     def register(
         self,
-        module: DockerModule,
+        dockerfile: Dockerfile,
         signature: InstrSignature,
         docname: str,
     ) -> InstrDefinition:
@@ -513,8 +472,8 @@ class DockerStore:
         Register a definition signature for a given module.
 
         This signals that a definition is documented. It makes sure we know
-        about this HCL definition within the local cache, then registers
-        the docname in its know documentation usages.
+        about this instruction definition within the local cache, then
+        registers the docname in its known documentation usages.
 
         Args:
             module:
@@ -532,76 +491,76 @@ class DockerStore:
         Returns
             The registered definition.
         """
-        hcl_definition = self.data[module].find_definition(module, signature)
+        hcl_definition = self.data[dockerfile].find_definition(dockerfile, signature)
         hcl_definition.usages.add(docname)
         return hcl_definition
 
     def purge_usage(self, usage_source: str) -> None:  # noqa
-        for module in self.data.values():
-            if not isinstance(module, DockerModule):
+        for dockerfile in self.data.values():
+            if not isinstance(dockerfile, Dockerfile):
                 continue
-            for signature in self.data[module].definitions.keys():
-                entry = self.data[module].definitions[signature]
+            for signature in self.data[dockerfile].definitions.keys():
+                entry = self.data[dockerfile].definitions[signature]
                 if usage_source in entry.usages:
                     entry.usages.remove(usage_source)
                 if not entry.usages:
-                    del self.data[module].definitions[signature]
+                    del self.data[dockerfile].definitions[signature]
 
     def get_code(self, df_file: Path) -> List[str]:
-        module = self.get_module(df_file)
-        return self.data[module].get_code(df_file)
+        dockerfile = self.get_dockerfile(df_file)
+        return self.data[dockerfile].get_code(df_file)
 
-    def get_module(self, df_file: Path) -> DockerModule:
-        module_path = df_file.parent
-        for module in self.data:
-            if module.path == module_path:
-                return module
+    def get_dockerfile(self, df_file: Path) -> Dockerfile:
+        dockerfile_path = df_file.parent
+        for dockerfile in self.data:
+            if dockerfile.path == dockerfile_path:
+                return dockerfile
         else:
-            raise SphinxDockerError(f"No module found at '{module_path}'.")
+            raise SphinxDockerError(f"No Dockerfile found at '{dockerfile_path}'.")
 
     def get_definitions(
         self,
-        module: Optional[DockerModule] = None,
+        dockerfile: Optional[Dockerfile] = None,
         df_file: Optional[Path] = None,
     ) -> Dict[InstrSignature, InstrDefinition]:
-        module = self.get_module(df_file) if df_file else module
+        dockerfile = self.get_dockerfile(df_file) if df_file else dockerfile
 
         def gen_definitions(
-            module: Optional[DockerModule],
+            dockerfile: Optional[Dockerfile],
         ) -> Iterator[Tuple[InstrSignature, InstrDefinition]]:
-            if module:
-                yield from self.data[module].definitions.items()
+            if dockerfile:
+                yield from self.data[dockerfile].definitions.items()
             else:
-                for module in self.data:
-                    yield from self.data[module].definitions.items()
+                for dockerfile in self.data:
+                    yield from self.data[dockerfile].definitions.items()
 
         def condition(entry: InstrDefinition) -> bool:
             return entry.file == df_file if df_file else True
 
         return {
             signature: definition
-            for signature, definition in gen_definitions(module)
+            for signature, definition in gen_definitions(dockerfile)
             if condition(definition)
         }
 
-    def get_module_files(self) -> List[Tuple[DockerModule, Path]]:
+    def get_dockerfile_files(self) -> List[Tuple[Dockerfile, Path]]:
         return sorted(
             [
-                (module, filepath)
-                for module in self.data
-                for filepath in self.data[module].get_documented_files()
+                (dockerfile, filepath)
+                for dockerfile in self.data
+                for filepath in self.data[dockerfile].get_documented_files()
             ]
         )
 
     def get_documented_files(
-        self, module: Optional[DockerModule] = None
+        self, dockerfile: Optional[Dockerfile] = None
     ) -> Set[Path]:
         def gen_files() -> Iterator[Path]:
-            if module:
-                yield from self.data[module].get_documented_files()
+            if dockerfile:
+                yield from self.data[dockerfile].get_documented_files()
             else:
-                for module_data in self.data.values():
-                    yield from module_data.get_documented_files()
+                for dockerfile_data in self.data.values():
+                    yield from dockerfile_data.get_documented_files()
 
         return set(df_file for df_file in gen_files())
 
@@ -615,12 +574,12 @@ class DockerStore:
         return documentation
 
 
-_ModuleData = TypeVar("_ModuleData", bound="ModuleData")
+_DockerfileData = TypeVar("_DockerfileData", bound="DockerfileData")
 
 
-class ModuleData(NamedTuple):
+class DockerfileData(NamedTuple):
     """
-    What we store in the build environment for a given Docker module.
+    What we store in the build environment for a given Dockerfile.
 
     Here is a JSON-like representation:
 
@@ -640,7 +599,7 @@ class ModuleData(NamedTuple):
 
     code: Dict[Path, List[str]]
     """
-    Cache of raw HCL code indexed by file path.
+    Cache of raw instruction code indexed by file path.
     """
 
     definitions: Dict[InstrSignature, InstrDefinition]
@@ -649,14 +608,15 @@ class ModuleData(NamedTuple):
     """
 
     @classmethod
-    def new(cls: Type[_ModuleData]) -> _ModuleData:
+    def new(cls: Type[_DockerfileData]) -> _DockerfileData:
         return cls(defaultdict(list), dict())
 
+    # TODO: might not be necessary
     def find_definition(
-        self, module: DockerModule, signature: InstrSignature
+        self, dockerfile: Dockerfile, signature: InstrSignature
     ) -> InstrDefinition:
         """
-        Look for a Docker definition in all HCL files of a module.
+        Look for a Docker definition in all HCL files of a Dockerfile.
 
         We use an internal cache that is pickled with the Sphinx environment.
         If the cache misses, we parse the code to find the definition.
@@ -667,7 +627,7 @@ class ModuleData(NamedTuple):
 
         Raises:
             sphinxcontrib.docker.SphinxDockerError: No definition could
-                be found matching the signature within this module.
+                be found matching the signature within this Dockerfile.
 
         Returns:
             The found definition.
@@ -677,7 +637,7 @@ class ModuleData(NamedTuple):
             hcl_definition = self.definitions[signature]
             log.debug(f"Found definition of {repr(signature)} in cache.")
         except KeyError:
-            for df_file in module.path.glob("Dockerfile"):
+            for df_file in dockerfile.path.glob("Dockerfile"):
                 hcl_definition = self._find_definition(signature, df_file)  # type: ignore
                 if not hcl_definition:
                     continue
@@ -686,7 +646,7 @@ class ModuleData(NamedTuple):
                 return hcl_definition
             else:
                 raise SphinxDockerError(
-                    f"Definition not found for {repr(signature)} in module {module}."
+                    f"Definition not found for {repr(signature)} in Dockerfile {dockerfile}."
                 )
         return hcl_definition
 
