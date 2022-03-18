@@ -53,10 +53,10 @@ from sphinxcontrib.docker.docker import (
     DockerFromSignature,
     Dockerfile,
     DockerfileSignature,
-    DockerOutputSignature,
     DockerResourceSignature,
     DockerStore,
     DockerLabelSignature,
+    DockerRunSignature,
     make_identifier,
 )
 
@@ -164,9 +164,14 @@ class DockerObjectDirective(ObjectDescription[str]):
     def _parse_from_signature(self, signature: str) -> InstrSignature:
         provider_kind, name = signature.split(".", maxsplit=1)
         provider, kind = provider_kind.split("_", maxsplit=1)
-        return DockerFromSignature(provider, kind, name)  # type: ignore # Method assignation to NamedTuple messes with Mypy
+        return DockerFromSignature(provider, kind, name)
 
     def _parse_label_signature(self, signature: str) -> InstrSignature:
+        provider_kind, name = signature.split(".", maxsplit=1)
+        provider, kind = provider_kind.split("_", maxsplit=1)
+        return DockerFromSignature(provider, kind, name)
+
+    def _parse_run_signature(self, signature: str) -> InstrSignature:
         provider_kind, name = signature.split(".", maxsplit=1)
         provider, kind = provider_kind.split("_", maxsplit=1)
         return DockerFromSignature(provider, kind, name)
@@ -543,29 +548,27 @@ class DockerDomain(Domain):
     """
     The domain name, short and unique.
     """
-
     label: str = "Docker"
+
     object_types = {
-        "resource": ObjType(t_("resource"), "resource"),
         "label": ObjType(t_("label"), "label"),
-        "output": ObjType(t_("output"), "output"),
+        "run": ObjType(t_("run"), "run"),
         "dockerfile": ObjType(t_("dockerfile"), "dockerfile"),
         "from": ObjType(t_("from"), "from"),
     }
     directives = {
-        "resource": DockerObjectDirective,
         "label": DockerObjectDirective,
-        "output": DockerObjectDirective,
+        "run": DockerObjectDirective,
         "dockerfile": DockerObjectDirective,
         "from": DockerObjectDirective,
     }
     roles = {
-        "resource": DockerCrossReferenceRole(),
         "label": DockerCrossReferenceRole(),
-        "output": DockerCrossReferenceRole(),
+        "run": DockerCrossReferenceRole(),
         "dockerfile": DockerCrossReferenceRole(),
         "from": DockerCrossReferenceRole(),
     }
+
     indices: List[Type[Index]] = [DockerDefinitionsIndex]
     initial_data: DomainData = {  # type: ignore # base class defined the type as "Dict[Any, Any]"
         "docker": DockerStore.initial_data(),

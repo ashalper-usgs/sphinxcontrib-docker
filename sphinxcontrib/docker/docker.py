@@ -297,6 +297,7 @@ def make_identifier(
 class DockerBlockType(Enum):
     FROM = "from"
     LABEL = "label"
+    RUN = "run"
 
 
 class InstrDefinition(NamedTuple):
@@ -427,16 +428,18 @@ class DockerLabelSignature(NamedTuple):
     __str__ = _str  # type: ignore # Assigning methods is unsupported by mypy
 
 
-class DockerOutputSignature(NamedTuple):
+class DockerRunSignature(NamedTuple):
+    provider: str
+    kind: str
     name: str
 
     @property
     def type(self) -> DockerBlockType:
-        return DockerBlockType.OUTPUT
+        return DockerBlockType.RUN
 
     @property
     def labels(self) -> List[str]:
-        return [self.name]
+        return [f"{self.provider}_{self.kind}", self.name]
 
     regex = regex  # type: ignore # Assigning methods is unsupported by mypy
 
