@@ -106,8 +106,8 @@ class DockerObjectDirective(ObjectDescription[str]):
 
     @property
     def dockerfile(self) -> Dockerfile:
-        if hasattr(self, "_hcl_mod"):
-            return getattr(self, "_hcl_mod")  # type: ignore
+        if hasattr(self, "_instr_mod"):
+            return getattr(self, "_instr_mod")  # type: ignore
 
         root_module = self.options.get("rootmodule", None)
         dockerfile = self.options.get("dockerfile", "")
@@ -115,15 +115,15 @@ class DockerObjectDirective(ObjectDescription[str]):
         return Dockerfile.from_dockerfile_parts(self.env, root_module, dockerfile)
 
     @property
-    def hcl_sig(self) -> Optional[InstrSignature]:
-        if hasattr(self, "_hcl_sig"):
-            return getattr(self, "_hcl_sig")  # type: ignore
+    def instr_sig(self) -> Optional[InstrSignature]:
+        if hasattr(self, "_instr_sig"):
+            return getattr(self, "_instr_sig")  # type: ignore
         return None
 
     @property
-    def hcl_def(self) -> Optional[InstrDefinition]:
-        if hasattr(self, "_hcl_def"):
-            return getattr(self, "_hcl_def")  # type: ignore
+    def instr_def(self) -> Optional[InstrDefinition]:
+        if hasattr(self, "_instr_def"):
+            return getattr(self, "_instr_def")  # type: ignore
         return None
 
     @property
@@ -144,7 +144,7 @@ class DockerObjectDirective(ObjectDescription[str]):
         stripped = signature.strip()
         if "/" in stripped:
             dockerfile_path, stripped = stripped.rsplit("/", maxsplit=1)
-            self._hcl_mod = Dockerfile.from_dockerfile_path(
+            self._instr_mod = Dockerfile.from_dockerfile_path(
                 self.env, dockerfile_path
             )
 
@@ -178,9 +178,9 @@ class DockerObjectDirective(ObjectDescription[str]):
 
     def make_signature_nodes(self, parsed_sig: InstrSignature) -> List[Node]:
         """
-        Make nice but semantic nodes for the HCL block signature.
+        Make nice but semantic nodes for the instruction block signature.
 
-        A HCL block signature is made of one type identifier followed by
+        An instruction block signature is made of one type identifier followed by
         a number of label identifiers. The amount of label identifiers is
         specified and fixed for a given type identifier.  For instance,
         a Docker ``resource`` has always 2 label identifiers, like so:
@@ -225,19 +225,19 @@ class DockerObjectDirective(ObjectDescription[str]):
         return signature_nodes
 
     def handle_signature(self, sig: str, signode: desc_signature) -> str:
-        hcl_sig = self.parse_signature(sig)
-        hcl_def = self._domain.register(self.dockerfile, hcl_sig)
-        self._hcl_sig = hcl_sig
-        self._hcl_def = hcl_def
+        instr_sig = self.parse_signature(sig)
+        instr_def = self._domain.register(self.dockerfile, instr_sig)
+        self._instr_sig = instr_sig
+        self._instr_def = instr_def
 
         signode["dockerfile"] = self.dockerfile
-        signode["signature"] = hcl_sig
-        signode["definition"] = hcl_def
+        signode["signature"] = instr_sig
+        signode["definition"] = instr_def
 
-        signature_nodes = self.make_signature_nodes(hcl_sig)
+        signature_nodes = self.make_signature_nodes(instr_sig)
         signode.extend(signature_nodes)
 
-        return make_identifier(hcl_sig, self.dockerfile)
+        return make_identifier(instr_sig, self.dockerfile)
 
     def add_target_and_index(
         self, name: T, sig: str, signode: desc_signature
@@ -261,7 +261,7 @@ class DockerObjectDirective(ObjectDescription[str]):
         # in turn can be used to render HTML and "id" attribute.
         signode["ids"].append(name)
 
-        signature = self._hcl_sig
+        signature = self._instr_sig
 
         generalindex_entry = SphinxGeneralIndexEntry(
             entrytype="single",
@@ -274,50 +274,49 @@ class DockerObjectDirective(ObjectDescription[str]):
         self.indexnode.append(inode)
 
     def transform_content(self, contentnode: addnodes.desc_content) -> None:
-        # TODO: remove
-        print(f"addnodes.desc_content '{addnodes.desc_content}'")
-        if False:
-            hcl_def = self._hcl_def
+        if hasattr(self, "_instr_def"):
+            instr_def = self._instr_def
+            print(f"addnodes.desc_content '{addnodes.desc_content}'")
 
-            code = self._domain.store.get_documentation(hcl_def)
+            code = self._domain.store.get_documentation(instr_def)
 
             for line in code:
                 log.debug(line)
 
-                comment_nodes = self._parse_docker_comment(hcl_def)
-                contentnode.extend(comment_nodes)
+            comment_nodes = self._parse_docker_comment(instr_def)
+            contentnode.extend(comment_nodes)
 
-    def _local_code_url(self, hcl_def: InstrDefinition) -> str:
-        return f"{hcl_def.file}#L{hcl_def.doc_code.start_position.line}-L{hcl_def.doc_code.end_position.line}"
+    def _local_code_url(self, instr_def: InstrDefinition) -> str:
+        return f"{instr_def.file}#L{instr_def.doc_code.start_position.line}-L{instr_def.doc_code.end_position.line}"
 
     def _parse_comment_with_external_parser(
-        self, hcl_def: InstrDefinition, markup_id: str
+        self, instr_def: InstrDefinition, markup_id: str
     ) -> List[Node]:
         parser_class = parser_for_markup(markup_id)
         parser = parser_class()
         parser.set_application(self.env.app)
         document = utils.new_document(
-            self._local_code_url(hcl_def), self.state.document.settings
+            self._local_code_url(instr_def), self.state.document.settings
         )
 
-        code = self._domain.store.get_documentation(hcl_def)
+        code = self._domain.store.get_documentation(instr_def)
 
         parser.parse("\n".join(code), document)
         return document.children
 
     def _parse_comment_with_current_parser(
-        self, hcl_def: InstrDefinition
+        self, instr_def: InstrDefinition
     ) -> List[Node]:
         document = utils.new_document(
-            self._local_code_url(hcl_def), self.state.document.settings
+            self._local_code_url(instr_def), self.state.document.settings
         )
 
-        code = self._domain.store.get_documentation(hcl_def)
+        code = self._domain.store.get_documentation(instr_def)
 
         self.state.nested_parse(
             StringList(
                 code,
-                source=str(hcl_def.file),
+                source=str(instr_def.file),
             ),
             self.content_offset,
             document,
@@ -326,25 +325,25 @@ class DockerObjectDirective(ObjectDescription[str]):
         return document.children
 
     def _parse_comment_markdown_comment(
-        self, hcl_def: InstrDefinition
+        self, instr_def: InstrDefinition
     ) -> List[Node]:
-        return self._parse_comment_with_external_parser(hcl_def, "markdown")
+        return self._parse_comment_with_external_parser(instr_def, "markdown")
 
     def _parse_comment_restructuredtext_comment(
-        self, hcl_def: InstrDefinition
+        self, instr_def: InstrDefinition
     ) -> List[Node]:
         return self._parse_comment_with_external_parser(
-            hcl_def, "restructuredtext"
+            instr_def, "restructuredtext"
         )
 
-    def _parse_docker_comment(self, hcl_def: InstrDefinition) -> List[Node]:
+    def _parse_docker_comment(self, instr_def: InstrDefinition) -> List[Node]:
         markup_id = self.options.get(
             "markup", get_config_docker_comment_markup(self.env)
         )
         if markup_id:
-            return self._parse_comment_with_external_parser(hcl_def, markup_id)
+            return self._parse_comment_with_external_parser(instr_def, markup_id)
         else:
-            return self._parse_comment_with_current_parser(hcl_def)
+            return self._parse_comment_with_current_parser(instr_def)
 
 
 class DockerCrossReferenceRole(XRefRole):

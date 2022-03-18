@@ -14,7 +14,7 @@ class CodePosition(NamedTuple):
 
 class CodeSpan(NamedTuple):
     """
-    Define a HCL definition within code, a signature and its position.
+    Define an instruction definition within code, a signature and its position.
     """
 
     start_position: CodePosition

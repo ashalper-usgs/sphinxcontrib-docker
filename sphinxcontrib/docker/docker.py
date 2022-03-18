@@ -494,9 +494,9 @@ class DockerStore:
         Returns
             The registered definition.
         """
-        hcl_definition = self.data[dockerfile].find_definition(dockerfile, signature)
-        hcl_definition.usages.add(docname)
-        return hcl_definition
+        instr_definition = self.data[dockerfile].find_definition(dockerfile, signature)
+        instr_definition.usages.add(docname)
+        return instr_definition
 
     def purge_usage(self, usage_source: str) -> None:  # noqa
         for dockerfile in self.data.values():
@@ -572,7 +572,8 @@ class DockerStore:
         end_line = definition.doc_code.end_position.line
 
         code_with_doc = self.get_code(definition.file)[start_line:end_line]
-
+        print(f"code_with_doc: {code_with_doc}")
+        
         documentation = extract_docstring_from_comment(code_with_doc)
         return documentation
 
@@ -583,21 +584,6 @@ _DockerfileData = TypeVar("_DockerfileData", bound="DockerfileData")
 class DockerfileData(NamedTuple):
     """
     What we store in the build environment for a given Dockerfile.
-
-    Here is a JSON-like representation:
-
-    .. code-block:: text
-
-        {
-            code: {
-                Path: [
-                    # lines of code
-                ]
-            },
-            definitions: {
-                HclBlockSignature: HclSignatureDefinition
-            }
-        }
     """
 
     code: Dict[Path, List[str]]
@@ -619,7 +605,7 @@ class DockerfileData(NamedTuple):
         self, dockerfile: Dockerfile, signature: InstrSignature
     ) -> InstrDefinition:
         """
-        Look for a Docker definition in all HCL files of a Dockerfile.
+        Look for a Docker definition in all instructions of a Dockerfile.
 
         We use an internal cache that is pickled with the Sphinx environment.
         If the cache misses, we parse the code to find the definition.
@@ -637,27 +623,27 @@ class DockerfileData(NamedTuple):
         """
         log.debug(f"Looking for definition of {repr(signature)}.")
         try:
-            hcl_definition = self.definitions[signature]
+            instr_definition = self.definitions[signature]
             log.debug(f"Found definition of {repr(signature)} in cache.")
         except KeyError:
             for df_file in dockerfile.path.glob("Dockerfile"):
-                hcl_definition = self._find_definition(signature, df_file)  # type: ignore
-                if not hcl_definition:
+                instr_definition = self._find_definition(signature, df_file)  # type: ignore
+                if not instr_definition:
                     continue
                 log.debug(f"Caching definition of {repr(signature)}.")
-                self.definitions[signature] = hcl_definition
-                return hcl_definition
+                self.definitions[signature] = instr_definition
+                return instr_definition
             else:
                 raise SphinxDockerError(
                     f"Definition not found for {repr(signature)} in Dockerfile {dockerfile}."
                 )
-        return hcl_definition
+        return instr_definition
 
     def get_definitions(
         self, df_file: Optional[Path] = None
     ) -> Dict[InstrSignature, InstrDefinition]:
         """
-        Make a mapping of known HCL definitions.
+        Make a mapping of known instruction definitions.
 
         Args:
             df_file:
@@ -709,7 +695,7 @@ class DockerfileData(NamedTuple):
 
         doc_code, signature_code, body_code = found_code
         log.debug(f"Found definition of {repr(signature)} in code.")
-        hcl_definition = InstrDefinition(
+        instr_definition = InstrDefinition(
             signature,
             df_file,
             doc_code,
@@ -717,7 +703,7 @@ class DockerfileData(NamedTuple):
             body_code,
             set(),
         )
-        return hcl_definition
+        return instr_definition
 
     def _find_definition_code(
         self, signature: InstrSignature, lines: List[str]
